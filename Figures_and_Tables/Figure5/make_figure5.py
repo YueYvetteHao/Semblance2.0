@@ -41,10 +41,27 @@ def border(im, col=(210, 216, 226), w=2):
     return im
 
 
+def header_cut(im, pad=50):
+    """y at which to crop panel B so the tab bar is kept but the title/disclaimer are not.
+
+    Found from the active tab's indigo underline rather than hard-coded, because the offset moves
+    with the capture's device scale factor (it was ~455 for the original 2x/1240 shots and ~300
+    for the current ones). Falls back to no crop if the underline isn't found.
+    """
+    a = np.asarray(im.convert("RGB")).astype(int)
+    blue = (a[:, :, 2] > 140) & (a[:, :, 2] - a[:, :, 0] > 50) & (a[:, :, 2] - a[:, :, 1] > 40)
+    rows = np.where(blue.sum(1) > 60)[0]
+    rows = rows[rows < im.height // 2]
+    if not len(rows):
+        return 0
+    # the tab label sits just above its underline; keep both plus a little breathing room
+    return max(0, int(rows[0]) - pad)
+
+
 # Panel A: full page, trim trailing whitespace. Panel B: drop the duplicated header/disclaimer
-# (crop above the tab bar, ~y=455 at 2x scale), then trim.
+# above the tab bar, then trim.
 A = border(trim_bottom(A))
-B = border(trim_bottom(B.crop((0, 455, B.width, B.height))))
+B = border(trim_bottom(B.crop((0, header_cut(B), B.width, B.height))))
 
 
 def font(sz):

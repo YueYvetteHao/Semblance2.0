@@ -115,7 +115,9 @@ cosine is still returned as `similarity` for transparency but is not the ranking
 
 ## Data and code availability
 
-- **Derived data + full pipeline outputs** — Zenodo: `[DOI to add]`
+- **Derived data, full pipeline outputs, and this repository archived** — Zenodo:
+  [10.5281/zenodo.21764627](https://doi.org/10.5281/zenodo.21764627) — a single deposit covers
+  the data and the code
 - **Backend service** — Google Cloud Run; source, Dockerfile and deploy script in
   `code/7_app/backend/`
 - **Semblance 1.0**, the pairwise enrichment-comparison tool this reuses —
