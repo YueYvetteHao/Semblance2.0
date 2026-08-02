@@ -1,0 +1,35 @@
+# eksctl ClusterConfig — the per-session batch cluster. Bring up, run the fan-out, tear down.
+#   eksctl create cluster -f 6_eks/infra/eks-cluster.yaml     # ~15 min
+#   eksctl delete cluster --name ccle-batch --region us-east-1
+#
+# Graviton (arm64) spot nodes match the batch image + the ml conda env (no cross-build). Driven from
+# the Mac now (Apple Silicon builds the arm64 image natively; no EC2 control box) — 2026-07-14.
+#
+# desiredCapacity 0 keeps the nodegroup OFF during the ~15-min create + Argo install + IRSA + image
+# push (no idle-node cost). There is NO cluster-autoscaler installed, so nodes do NOT appear on their
+# own when pods pend — scale up EXPLICITLY right before the fan-out, and the job's pods schedule:
+#   eksctl scale nodegroup --cluster ccle-batch --name spot-arm64 --nodes 8 --region us-east-1
+# `down.sh` (eksctl delete cluster) removes everything at teardown.
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: ccle-batch
+  region: us-east-1
+  version: "1.34"          # standard support until 2026-12-01 (1.31/1.32 aged into extended-support surcharge)
+
+iam:
+  withOIDC: true          # required for IRSA — the `ccle-s3` service account is created in M-EKS-2
+
+managedNodeGroups:
+  - name: spot-arm64
+    amiFamily: AmazonLinux2023
+    # All 16 vCPU / arm64. Multiple families widen the spot pool so 8 nodes actually fulfill
+    # (capacity-optimized). c7g/m7g (Graviton3) preferred; c6g/m6g (Graviton2) are the fallback.
+    instanceTypes: ["c7g.4xlarge", "m7g.4xlarge", "c6g.4xlarge", "m6g.4xlarge"]
+    spot: true
+    minSize: 0
+    maxSize: 8            # 8 x 16 = 128 vCPU = the APPROVED spot quota (L-34B43A08) ceiling.
+    desiredCapacity: 0    #   scale to 8 right before the fan-out; scale to 0 / delete after.
+    volumeSize: 40
+    labels: { workload: batch }

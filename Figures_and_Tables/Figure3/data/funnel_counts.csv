@@ -1,0 +1,5 @@
+stage,value
+Candidate pairs,7836
+Significant by naive CI_lo>0,3284
+Permutation-validated p<0.05,971
+Expected by chance,392

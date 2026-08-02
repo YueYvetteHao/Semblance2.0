@@ -1,0 +1,63 @@
+# kind rehearsal of the fan-out — validates the Argo mechanics (withParam, parallelism, retries)
+# with NO AWS. Data is volume-mounted (STAGE_S3=0); the local image is loaded via `kind load`.
+#
+#   kind load docker-image ccle-pipeline:v1 --name ccle-rehearsal
+#   python 4_model/emit_shards.py --workload pathway_ablation --diseases SKCM,COAD,SARC > /tmp/s.json
+#   argo submit -n argo 6_eks/kind/fanout-kind.yaml -p shards="$(cat /tmp/s.json)" --watch
+#
+# Success: 3 pods run in parallel; deleting one shows a retry; 3 checkpoints appear in the pod's out dir.
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: ccle-rehearsal-
+spec:
+  entrypoint: fanout
+  arguments:
+    parameters:
+      - name: shards
+        value: "[]"
+      - name: cmd
+        value: 'python ctrp-gdsc-ccle-ml/4_model/run_ablation.py --shard "$SHARD" --pathway pathway_reactome --n-repeats 2 --n-inner 3 --n-iter 10 --n-perm 3'
+  templates:
+    - name: fanout
+      parallelism: 3
+      steps:
+        - - name: run-shard
+            template: run
+            withParam: "{{workflow.parameters.shards}}"
+            arguments:
+              parameters:
+                - { name: shard, value: "{{item}}" }
+                - { name: cmd, value: "{{workflow.parameters.cmd}}" }
+    - name: run
+      inputs:
+        parameters: [{ name: shard }, { name: cmd }]
+      retryStrategy:
+        limit: "2"
+        retryPolicy: OnError
+      container:
+        image: ccle-pipeline:v1
+        imagePullPolicy: Never          # use the kind-loaded local image, never pull
+        command: ["/app/entrypoint.sh"] # explicit so Argo's emissary doesn't registry-lookup a local image
+        args: ["sh", "-c", "{{inputs.parameters.cmd}}"]
+        env:
+          - { name: SHARD, value: "{{inputs.parameters.shard}}" }
+          - { name: STAGE_S3, value: "0" }
+          # Cap BLAS threads. The driver is single-process (evaluate.INNER_NJOBS=1); without a cap
+          # each pod's OpenBLAS spawns one thread per node vCPU, so 3 pods on the single 8-vCPU kind
+          # node = ~24 threads thrashing 8 cores (observed: a shard that runs ~9 min solo took >54 min).
+          # 3 pods x 2 threads = 6 of 8 cores, no oversubscription.
+          - { name: OMP_NUM_THREADS, value: "2" }
+          - { name: OPENBLAS_NUM_THREADS, value: "2" }
+          - { name: MKL_NUM_THREADS, value: "2" }
+          - { name: NUMEXPR_NUM_THREADS, value: "2" }
+        volumeMounts:
+          - { name: merge, mountPath: /app/ctrp-gdsc-ccle-ml/2_merge/out, readOnly: true }
+          - { name: omics, mountPath: /app/ctrp-gdsc-ccle-ml/3_omics/out, readOnly: true }
+          - { name: pathway, mountPath: /app/ctrp-gdsc-ccle-ml/5_pathway/out, readOnly: true }
+          - { name: out, mountPath: /app/ctrp-gdsc-ccle-ml/4_model/out }
+      volumes:
+        - { name: merge, hostPath: { path: /data/merge } }
+        - { name: omics, hostPath: { path: /data/omics } }
+        - { name: pathway, hostPath: { path: /data/pathway } }
+        - { name: out, emptyDir: {} }

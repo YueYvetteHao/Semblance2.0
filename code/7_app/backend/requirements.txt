@@ -1,0 +1,8 @@
+fastapi>=0.111
+uvicorn[standard]>=0.30
+pydantic>=2.7
+# --- Semblance 2.0 real engine (atlas semantic match) ---
+sentence-transformers>=2.7   # BioLORD-2023 embeddings (pulls torch; ~420 MB model at runtime)
+numpy>=1.26
+scipy>=1.11
+pandas>=2.0

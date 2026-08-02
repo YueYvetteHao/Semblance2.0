@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Semblance 2.0 — GDSC×CTRP×CCLE drug recommender</title>
+<!-- Favicon: the 🧬 emoji drawn into an inline SVG data URI. No binary .ico to commit, nothing
+     extra for GitHub Pages to serve, and it renders from the system emoji font. dominant-baseline
+     is deliberately omitted — Safari positions it inconsistently; the y offset below is tuned so
+     the glyph sits centred in all of Chrome, Safari and Firefox. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%AC%3C/text%3E%3C/svg%3E">
+<script src="config.js"></script>
+<style>
+  :root{--bg:#f7f9fc;--card:#ffffff;--ink:#1b2436;--mut:#64748b;--line:#e2e8f0;
+        --field:#fbfcfe;--pill:#eef2f8;
+        --sens:#15915b;--res:#d1493f;--accent:#3b6ef5;--accent2:#7c5cf0}
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  header{padding:22px 20px 8px;max-width:1200px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 4px} h3{margin:14px 0 2px;font-size:15px}
+  .sub{color:var(--mut);font-size:13px}
+  .disclaimer{max-width:1200px;margin:10px auto 0;padding:8px 12px;background:#fff7ed;border:1px solid #f5d5a8;border-radius:8px;color:#8a5a12;font-size:12.5px}
+  main{max-width:1200px;margin:0 auto;padding:16px 20px 60px}
+  .tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin:10px 0 6px}
+  .tab{padding:10px 16px;cursor:pointer;color:var(--mut);border:0;background:none;font-size:14px;border-bottom:2px solid transparent}
+  .tab.active{color:var(--ink);border-bottom-color:var(--accent)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+  .arms{display:flex;gap:16px;align-items:flex-start}
+  .arms>.card{flex:1 1 0;min-width:0;overflow-x:auto}
+  .arms>.card:first-child{flex:1.4 1 0}
+  @media (max-width:880px){.arms{flex-direction:column}.arms>.card{width:100%}}
+  label{display:block;font-size:12.5px;color:var(--mut);margin:10px 0 4px}
+  select,textarea,input{font:inherit;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:8px;padding:9px 11px;width:100%}
+  textarea{min-height:150px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
+  .row{display:flex;gap:12px;flex-wrap:wrap}.row>div{flex:1;min-width:140px}
+  button.go{cursor:pointer;background:linear-gradient(90deg,var(--accent),var(--accent2));border:0;color:#fff;font-weight:600;padding:10px 20px;margin-top:12px;border-radius:8px}
+  button.go:disabled{opacity:.5;cursor:default}
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13.5px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  .sens{color:var(--sens);font-variant-numeric:tabular-nums}.res{color:var(--res);font-variant-numeric:tabular-nums}
+  .num{font-variant-numeric:tabular-nums;color:var(--mut)}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--pill);color:var(--mut);font-size:11.5px;margin:1px 3px 1px 0}
+  .muted{color:var(--mut);font-size:13px}.warn{color:#c0392b}
+  .hint{color:var(--mut);font-size:12px;margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Semblance 2.0</h1>
+  <div class="sub">Drug recommendations from GDSC2 + CTRP single-agent screening × CCLE tumor-cell profiles.</div>
+  <div class="sub" style="margin-top:6px"><b>Yue Hao</b></div>  
+  <div class="sub" style="margin-top:6px"><b>🔬 Cell Line Lookup</b> — pick a profiled cancer cell line and get its ranked drugs: <b>broad-spectrum</b> (what its cancer type is generically most sensitive to) plus <b>mechanism-specific</b> (drugs with a validated expression signature in that cancer type). &nbsp;·&nbsp; <b>🧬 Signature Match</b> — paste a GSEA program and get the drugs whose drug-sensitive-cell signature it most closely resembles, by biomedical semantic similarity.</div>
+
+</header>
+<div class="disclaimer">⚠️ Research / education only — <b>NOT a clinical tool</b> and NOT medical advice.</div>
+<main>
+  <div class="tabs">
+    <button class="tab active" data-tab="a">🔬 Cell Line Lookup</button>
+    <button class="tab" data-tab="b">🧬 Signature Match</button>
+  </div>
+
+  <section id="tab-a">
+    <div class="card">
+      <div class="muted" style="margin-bottom:4px">Pick a profiled cell line — get its ranked drug recommendations (broad-spectrum + mechanism).</div>
+      <label for="cell">Cell line</label>
+      <select id="cell"><option>Loading…</option></select>
+      <div class="hint">Precomputed and served straight from the CDN — no backend, always on.</div>
+    </div>
+    <div id="a-out"></div>
+  </section>
+
+  <section id="tab-b" hidden>
+    <div class="card">
+      <div class="muted" style="margin-bottom:4px">Bring a GSEA program — get drugs whose sensitive-cell signature it most resembles (mechanism match, exploratory).</div>
+      <label for="gsea">Paste a GSEA results table — clusterProfiler / fgsea schema (ID, Description, NES, pvalue, p.adjust…), CSV or TSV</label>
+      <textarea id="gsea" placeholder="ID,Description,NES,pvalue,p.adjust
+R-HSA-909733,Interferon alpha/beta signaling,2.41,0.0001,0.003
+R-HSA-1640170,Cell Cycle,-1.98,0.0007,0.01"></textarea>
+      <div class="hint">New here? <a href="#" id="loadex" style="color:var(--accent);font-weight:600;text-decoration:none">↳ Load an example melanoma signature</a>, then hit Search.</div>
+      <div class="row">
+        <div><label for="file">…or upload a file</label><input id="file" type="file" accept=".csv,.tsv,.txt"></div>
+        <div><label for="disease">Cancer type (optional)</label><input id="disease" placeholder="e.g. SKCM = melanoma"></div>
+        <div><label for="topk">Top K</label><input id="topk" type="number" value="20" min="1" max="200"></div>
+      </div>
+      <button class="go" id="run">Search</button>
+      <div class="hint" id="b-hint"></div>
+    </div>
+    <div id="b-out"></div>
+  </section>
+</main>
+<script>
+const CFG = window.APP_CONFIG || {BACKEND_URL:"",DATA_BASE:"./data"};
+const $ = s => document.querySelector(s);
+const fmt = (x,d=2)=> (x===null||x===undefined||isNaN(x))?"—":Number(x).toFixed(d);
+const cls = z => (z===null||z===undefined)?"num":(z<0?"sens":"res");
+
+// Readable cancer-type names (codes are TCGA/CCLE abbreviations)
+const DZ = {
+  "ALL":"Acute lymphoblastic leukemia (ALL)","BLCA":"Bladder (BLCA)","BRCA":"Breast (BRCA)",
+  "CLL":"Chronic lymphocytic leukemia (CLL)","COAD/READ":"Colorectal (COAD/READ)",
+  "DLBC":"Diffuse large B-cell lymphoma (DLBC)","ESCA":"Esophageal (ESCA)","GBM":"Glioblastoma (GBM)",
+  "HNSC":"Head & neck (HNSC)","KIRC":"Kidney, clear cell (KIRC)","LAML":"Acute myeloid leukemia (LAML)",
+  "LCML":"Chronic myeloid leukemia (LCML)","LGG":"Low-grade glioma (LGG)","LIHC":"Liver (LIHC)",
+  "LUAD":"Lung adenocarcinoma (LUAD)","LUSC":"Lung squamous (LUSC)","MB":"Medulloblastoma (MB)",
+  "MESO":"Mesothelioma (MESO)","MM":"Multiple myeloma (MM)","NB":"Neuroblastoma (NB)","OV":"Ovarian (OV)",
+  "PAAD":"Pancreatic (PAAD)","PRAD":"Prostate (PRAD)","SARC":"Sarcoma (SARC)","SCLC":"Small-cell lung (SCLC)",
+  "SKCM":"Melanoma (SKCM)","STAD":"Gastric (STAD)","THCA":"Thyroid (THCA)","UCEC":"Endometrial (UCEC)",
+};
+function dz(c){
+  if(!c) return "unknown";
+  if(c.startsWith("SITE_")) return c.slice(5).toLowerCase().replace(/_/g," ").replace(/\b\w/g,m=>m.toUpperCase());
+  if(c.toUpperCase()==="UNABLE TO CLASSIFY") return "Unclassified";
+  const key=c.replace(/_/g,"/");
+  return DZ[key]||key;
+}
+
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  t.classList.add("active");
+  $("#tab-a").hidden = t.dataset.tab!=="a";
+  $("#tab-b").hidden = t.dataset.tab!=="b";
+});
+
+// ---- Tab A : standard query (static JSON) ----
+async function loadIndex(){
+  const sel=$("#cell");
+  try{
+    const idx=await (await fetch(`${CFG.DATA_BASE}/cellline/_index.json`,{cache:"no-cache"})).json();
+    sel.innerHTML="";
+    idx.forEach(c=>{const o=document.createElement("option");o.value=c.depmap_id;o.textContent=`${c.name}  ·  ${dz(c.disease)}`;sel.appendChild(o);});
+    sel.onchange=()=>loadCell(sel.value);
+    if(idx.length) loadCell(idx[0].depmap_id);
+  }catch(e){
+    sel.innerHTML="<option>unavailable</option>";
+    $("#a-out").innerHTML=`<div class="card warn">Cell-line data isn't loaded yet. Please try again shortly.</div>`;
+  }
+}
+async function loadCell(id){
+  const out=$("#a-out"); out.innerHTML=`<div class="card muted">Loading ${id}…</div>`;
+  try{
+    const d=await (await fetch(`${CFG.DATA_BASE}/cellline/${id}.json`,{cache:"no-cache"})).json();
+    const tgt=t=>t?`<span class="muted">${t}</span>`:`<span class="num">—</span>`;
+    const bs=(d.broad_spectrum||[]).map((r,i)=>`<tr><td class="num">${i+1}</td><td>${r.drug}</td><td>${tgt(r.target)}</td>
+        <td class="${cls(r.disease_sens)}">${fmt(r.disease_sens)}</td><td class="num">${r.n_lines??"—"}</td>
+        <td class="${cls(r.line_sens)}">${r.line_sens==null?'<span class="num">—</span>':fmt(r.line_sens)}</td>
+        <td class="num">${fmt(r.ic50_uM,4)}</td></tr>`).join("");
+    const mech=(d.mechanism||[]).map(r=>`<tr><td>${r.drug}</td><td>${tgt(r.target)}</td>
+        <td class="num">${fmt(r.rho,2)}</td><td class="num">${fmt(r.perm_z,1)}</td></tr>`).join("")
+        || `<tr><td colspan="4" class="muted">No validated mechanism signature for this cancer type (expected for most drugs).</td></tr>`;
+    const mixed = d.mixed_lineage ? `<div class="hint warn">⚠️ This is a broad tissue grouping, not a single diagnosis — these lines weren't assigned a specific cancer type, so recommendations here are less reliable.</div>` : "";
+    out.innerHTML=`
+      <div class="card">
+        <div class="muted"><b>${d.name||id}</b> · ${dz(d.disease)} · ${d.n_drugs||(d.broad_spectrum||[]).length} drugs tested on this line · ${d.n_disease_lines||"?"} cell lines of this type${d._sample?` · <span class="warn">SAMPLE data</span>`:""}</div>
+        ${mixed}
+      </div>
+      <div class="arms">
+      <div class="card">
+        <h3>Broad-spectrum — drugs this cancer type is most sensitive to <span class="muted">(cancer-type average)</span></h3>
+        <table><thead><tr><th>#</th><th>Drug</th><th>Target</th><th>Type avg</th><th>n</th><th>This line</th><th>IC50 <span style="text-transform:none">µM</span></th></tr></thead>
+        <tbody>${bs||`<tr><td colspan="7" class="muted">Too few profiled cell lines of this cancer type (${d.n_disease_lines||"?"}) for a reliable ranking — a cancer-type average needs at least 5.</td></tr>`}</tbody></table>
+        <div class="hint"><b>Type avg</b> = average sensitivity across all lines of this cancer type (the recommendation), over <b>n</b> lines; <b>This line</b> = this cell line's own value. Both standardized — <b>more negative = more sensitive</b>; IC50 (µM): lower = more potent. Ranks by average potency, so broadly cytotoxic agents can appear high without being lineage-specific — weigh the reported target and n. (Non-therapeutic lab-tool compounds are filtered out.)</div>
+      </div>
+      <div class="card">
+        <h3>Mechanism-specific — drugs with a validated expression signature in this cancer type <span class="muted">(exploratory)</span></h3>
+        <table><thead><tr><th>Drug</th><th>Target</th><th>Signal <span style="text-transform:none">(ρ)</span></th><th>Evidence <span style="text-transform:none">(z)</span></th></tr></thead><tbody>${mech}</tbody></table>
+        <div class="hint">All shown clear a permutation test at <b>p ≤ 0.01</b>. <b>Signal (ρ)</b> = how well the cancer-type expression signature tracks sensitivity; <b>Evidence (z)</b> = standard deviations above a tissue-matched null (higher = stronger, ranks the list). Hypothesis-generating, not a per-patient prediction — and not corrected for testing thousands of drug×cancer pairs.</div>
+      </div>
+      </div>`;
+  }catch(e){ out.innerHTML=`<div class="card warn">Could not load ${id}.json</div>`; }
+}
+
+// ---- Tab B : GSEA semantic search (-> Cloud Run) ----
+$("#file").onchange=async e=>{const f=e.target.files[0];if(f)$("#gsea").value=await f.text();};
+$("#loadex").onclick=async e=>{
+  e.preventDefault();
+  try{
+    const t=await (await fetch(`${CFG.DATA_BASE}/example_gsea.csv`,{cache:"no-cache"})).text();
+    $("#gsea").value=t.trim(); $("#disease").value="SKCM";
+    $("#b-hint").textContent="Loaded an example melanoma (SKCM) sensitivity program — now click Search.";
+  }catch(_){ $("#b-hint").textContent="Couldn't load the example file."; }
+};
+$("#run").onclick=async ()=>{
+  const out=$("#b-out"),btn=$("#run"),hint=$("#b-hint"),table_text=$("#gsea").value.trim();
+  if(!CFG.BACKEND_URL){out.innerHTML=`<div class="card muted">🚧 <b>Signature Match is coming soon.</b> The matching service isn't connected yet — meanwhile, <b>Cell Line Lookup</b> is fully available.</div>`;return;}
+  if(table_text.split(/\r?\n/).length<3){out.innerHTML=`<div class="card warn">Paste a GSEA table: a header row + at least 2 pathway rows.</div>`;return;}
+  btn.disabled=true; hint.textContent="Scoring… the first request after a quiet period can take ~5–15s to warm up.";
+  out.innerHTML=`<div class="card muted">Warming up & scoring…</div>`;
+  try{
+    const body={table_text,top_k:Number($("#topk").value)||20,disease:$("#disease").value.trim()||null};
+    const r=await fetch(`${CFG.BACKEND_URL.replace(/\/$/,"")}/semblance`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!r.ok){out.innerHTML=`<div class="card warn">The matching service couldn't process that request (${r.status}). Please check your table and try again.</div>`;return;}
+    const d=await r.json();
+    const rows=(d.matches||[]).map(m=>`<tr><td class="num">${m.rank}</td><td>${m.drug}</td><td class="muted">${dz(m.disease)}</td>
+        <td class="sens">${m.evidence_z==null?fmt(m.similarity,3):fmt(m.evidence_z,2)}</td><td>${(m.matched_pathways||[]).map(p=>`<span class="pill">${p}</span>`).join("")}</td></tr>`).join("");
+    out.innerHTML=`<div class="card">
+        <div class="muted">${d.n_input_pathways} pathways in your signature</div>
+        ${d.note?`<div class="hint warn">ℹ️ ${d.note}</div>`:""}
+        <h3>Best drug matches — drugs whose sensitivity signature most resembles yours</h3>
+        <table><thead><tr><th>#</th><th>Drug</th><th>Cancer type</th><th>Evidence (z)</th><th>Shared pathways</th></tr></thead>
+        <tbody>${rows||`<tr><td colspan="5" class="muted">No drug matches for this signature. Try removing the cancer-type filter, or make sure your table has enriched pathways with a positive NES.</td></tr>`}</tbody></table>
+        <div class="hint warn">${d.disclaimer?`⚠️ ${d.disclaimer}`:""}</div></div>`;
+  }catch(e){ out.innerHTML=`<div class="card warn">Couldn't reach the matching service. Please try again in a moment.</div>`; }
+  finally{ btn.disabled=false; hint.textContent=""; }
+};
+
+loadIndex();
+</script>
+</body>
+</html>

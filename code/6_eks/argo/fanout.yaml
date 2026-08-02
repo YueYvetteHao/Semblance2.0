@@ -1,0 +1,92 @@
+# Generic fan-out: one pod per shard, over a JSON shard-list, bounded by parallelism.
+# Workload-agnostic — swap the `shards`, the `cmd`, and (for F2) the pod cpu to drive ablation or F2.
+#
+# PATHWAY ABLATION (15 shards; pod = 7 cpu, perm-jobs 7 — the DEFAULT resources below):
+#   python 4_model/emit_shards.py --workload pathway_ablation > shards.json
+#   argo submit -n argo 6_eks/argo/fanout.yaml \
+#     -p shards="$(cat shards.json)" \
+#     -p cmd='python ctrp-gdsc-ccle-ml/4_model/run_ablation.py --shard "$SHARD" --pathway pathway_reactome --n-repeats 5 --n-iter 20 --n-perm 100 --perm-jobs 7' \
+#     -p result-prefix=results/ablation_pathway_full
+#   (2026-07-14 benchmark: one nested-CV on 1808 pathway features is ~1.5-1.7 min on Graviton; all 15
+#    shards run concurrently so total wall-clock ~= slowest shard. n-perm 100 -> slowest ~95-130 min
+#    (total ~1.5-2 h, p-res 0.01); n-perm 50 -> slowest ~60-85 min (total ~1-1.4 h, p-res 0.02).)
+#
+# F2 SIGNATURES (322 shards, batch-size 25; pod = 5 cpu, n-jobs 5):
+#   !! FIRST edit the two `resources` cpu values below from "7" to "5" (Argo rejects templated quantities,
+#      so pod-cpu is not a -p parameter — it is hardcoded here). Then:
+#   python 4_model/emit_shards.py --workload f2_perm --batch-size 25 > f2.json
+#   argo submit -n argo 6_eks/argo/fanout.yaml \
+#     -p shards="$(cat f2.json)" \
+#     -p cmd='python ctrp-gdsc-ccle-ml/4_model/run_signature.py --shard "$SHARD" --features expr --n-perm 100 --n-jobs 5' \
+#     -p result-prefix=results/f2_signatures
+#
+# Each item of `shards` is a JSON object; withParam fans one pod per item. The pod gets it as $SHARD.
+#
+# RESOURCE MODEL (128 vCPU quota = 8 x 16-vCPU arm64 spot nodes, ~15.3 schedulable cpu/node):
+#   * requests == limits == cpu -> Guaranteed QoS, exact bin-packing, no CFS-throttle surprises.
+#   * pathway cpu 7 -> 2 pods/node -> 16 slots (>= 15 shards, all concurrent). perm-jobs == 7.
+#   * F2 cpu 5      -> 3 pods/node -> 24 slots (120 cores busy).                 n-jobs   == 5.
+#   * OMP/OPENBLAS/MKL/NUMEXPR = 1, so N joblib workers = N cores (no BLAS oversubscription).
+# !! ALWAYS set --perm-jobs (run_ablation) / --n-jobs (run_signature) == the cpu below in the submit cmd.
+#    Without it the perm null runs SERIAL on 1 core and a shard takes ~a DAY (2026-07-14 lesson).
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: ccle-fanout-
+spec:
+  serviceAccountName: ccle-s3          # IRSA -> scoped S3 creds (created in M-EKS-2)
+  entrypoint: fanout
+  arguments:
+    parameters:
+      - name: shards                   # JSON array from emit_shards.py
+        value: "[]"
+      - name: cmd                      # driver command; references "$SHARD". Set --perm-jobs/--n-jobs == cpu.
+        value: 'python ctrp-gdsc-ccle-ml/4_model/run_ablation.py --shard "$SHARD" --pathway pathway_reactome --n-repeats 5 --n-iter 20 --n-perm 100 --perm-jobs 7'
+      - name: result-prefix
+        value: results/ablation_pathway_full
+      - name: image
+        value: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/ccle-pipeline:v1
+
+  templates:
+    - name: fanout
+      parallelism: 24                  # concurrent pods; >= node slots for both jobs (node capacity is the real gate)
+      inputs:
+        parameters: [{ name: cmd }, { name: result-prefix }, { name: image }]
+      steps:
+        - - name: run-shard
+            template: run
+            withParam: "{{workflow.parameters.shards}}"
+            arguments:
+              parameters:
+                - { name: shard, value: "{{item}}" }
+                - { name: cmd, value: "{{workflow.parameters.cmd}}" }
+                - { name: result-prefix, value: "{{workflow.parameters.result-prefix}}" }
+                - { name: image, value: "{{workflow.parameters.image}}" }
+
+    - name: run
+      inputs:
+        parameters: [{ name: shard }, { name: cmd }, { name: result-prefix }, { name: image }]
+      retryStrategy:
+        limit: "3"
+        retryPolicy: Always            # retry spot interruption / node loss AND pod failures (incl. OOMKill exit 137).
+                                       # OnError misses OOM -> those shards died terminal in ccle-pathway-c7xj9 (2026-07-14).
+                                       # If a shard OOMs, bump the memory below too — a bare retry re-OOMs at the same limit.
+      container:
+        image: "{{inputs.parameters.image}}"
+        command: ["/app/entrypoint.sh"]                   # explicit so Argo's emissary skips the registry lookup
+        args: ["sh", "-c", "{{inputs.parameters.cmd}}"]   # entrypoint.sh stages S3, runs this, syncs back
+        env:
+          - { name: SHARD, value: "{{inputs.parameters.shard}}" }
+          - { name: RESULT_PREFIX, value: "{{inputs.parameters.result-prefix}}" }
+          - { name: STAGE_S3, value: "1" }
+          # BLAS pinned to 1 thread/worker. Parallelism lives at the joblib level: run_ablation's
+          # perm-null loop uses --perm-jobs workers, run_signature's batch uses --n-jobs workers. Each
+          # worker is a loky SUBPROCESS that inherits these vars, so N workers x 1 BLAS thread = N cores
+          # (== the cpu below) with no oversubscription. Set --perm-jobs / --n-jobs == cpu in the cmd.
+          - { name: OMP_NUM_THREADS, value: "1" }
+          - { name: OPENBLAS_NUM_THREADS, value: "1" }
+          - { name: MKL_NUM_THREADS, value: "1" }
+          - { name: NUMEXPR_NUM_THREADS, value: "1" }
+        resources:                                        # requests == limits -> Guaranteed QoS.
+          requests: { cpu: "7", memory: "8Gi" }           # <-- F2: change BOTH cpu to "5" (pathway = "7")
+          limits:   { cpu: "7", memory: "8Gi" }           # <-- F2: change BOTH cpu to "5" (pathway = "7")

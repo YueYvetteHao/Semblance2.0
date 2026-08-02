@@ -1,0 +1,35 @@
+# The Dockerfile does `COPY --chown=user . .`, so anything left here lands in the
+# image. Keep the context to what the service actually needs at run time:
+# main.py, quota.py, semblance_engine.py, semblance/, assets/*.npz, requirements.txt.
+.git/
+.gitattributes
+.gitignore
+
+# Byte-compiled from the Mac (cpython-314) — wrong ABI for the image's Python 3.11
+# and shadows nothing useful. Must not be copied in.
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# OS / editor junk
+.DS_Store
+._*
+.vscode/
+.idea/
+*.swp
+
+# Docs + local dev — not needed by the running service.
+# (README.md carries the HF Spaces YAML frontmatter and is read by the Hub from the
+#  repo, not from inside the image, so excluding it here is safe.)
+README.md
+*.md
+.env
+.env.*
+*.log
+.venv/
+venv/
+.pytest_cache/
+tests/
+
+# Deploy helper — runs on your Mac, not in the container.
+deploy.sh

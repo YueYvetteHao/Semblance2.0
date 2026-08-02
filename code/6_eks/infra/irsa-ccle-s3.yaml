@@ -1,0 +1,29 @@
+# IRSA — bind an IAM role to the `ccle-s3` Kubernetes ServiceAccount (namespace argo) so the fan-out
+# pods get scoped S3 creds (read data/pathway_features, read+write results/) without node-role S3.
+#
+#   kubectl create namespace argo          # (Argo install also creates it; make sure it exists first)
+#   eksctl create iamserviceaccount -f 6_eks/infra/irsa-ccle-s3.yaml --approve
+#
+# !! This MINTS an IAM role -> Claude's auto-mode blocks IAM grants. In an interactive session the
+#    permission prompt can be approved; otherwise the USER runs this one command. Needs withOIDC (set
+#    in eks-cluster.yaml) so the cluster has an OIDC provider to trust.
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: ccle-batch
+  region: us-east-1
+iam:
+  withOIDC: true
+  serviceAccounts:
+    - metadata:
+        name: ccle-s3
+        namespace: argo
+      attachPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+            Resource: "arn:aws:s3:::<S3_BUCKET>/*"
+          - Effect: Allow
+            Action: ["s3:ListBucket"]
+            Resource: "arn:aws:s3:::<S3_BUCKET>"

@@ -1,0 +1,40 @@
+# --- OS / editor -------------------------------------------------------------
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.venv/
+venv/
+.pytest_cache/
+
+# --- R -----------------------------------------------------------------------
+.Rhistory
+.Rapp.history
+.RData
+.Rproj.user/
+
+# --- Pipeline outputs (NOT in this repo — archived on Zenodo) -----------------
+# Every stage writes to an out/ dir; the harmonized stores, the 1,808-pathway
+# ssGSEA matrix and the 2,132-table enrichment atlas total ~1.2 GB and live in
+# the Zenodo deposit instead. Keep them out of the repo and off GitHub Pages.
+code/*/out/
+code/*/_work/
+code/**/checkpoints/
+code/**/sig_checkpoints/
+*.parquet
+
+# --- Local secrets / AWS -----------------------------------------------------
+.env
+.env.*
+*.pem
+credentials

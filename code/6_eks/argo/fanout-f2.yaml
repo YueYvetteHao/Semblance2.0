@@ -1,0 +1,68 @@
+# F2 per-drug gene-signature fan-out (run_signature.py). Same engine as fanout.yaml but with the
+# F2-specific resources baked in, because Argo rejects a templated cpu quantity (can't be a -p param):
+#   * cpu 5  -> 3 pods/node (3x5=15 <= 15.3 schedulable) -> 24 slots on 8 nodes. n-jobs == 5.
+#   * memory 8Gi (3 pods x 8Gi = 24Gi <= 28Gi allocatable). F2 loads per-disease expression + selects
+#     <= max-genes; lighter than the 1808-col pathway matrix, so 8Gi is the packing-limited ceiling.
+#     If a batch OOMs (exit 137), bump memory AND drop to 2 pods/node — retryPolicy Always re-runs it,
+#     but a bare retry re-OOMs at the same limit (2026-07-14 pathway lesson).
+#   * retryPolicy Always: catches spot loss AND pod failures (incl. OOM). Safe now that the phantom-MinIO
+#     log-archival is disabled (artifact-repositories configMap archiveLogs:false) so a completed pod
+#     exits 0 instead of the cosmetic exit-64 that used to mark healthy shards Error.
+#
+# Submit via 6_eks/launch_f2.sh (emits shards, then argo submit -p shards=@f2.json). Do NOT hand-edit
+# the shard list here — it's 322 batched {disease, drug_uids:[...]} objects from emit_shards.py.
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: ccle-f2-
+spec:
+  serviceAccountName: ccle-s3
+  entrypoint: fanout
+  arguments:
+    parameters:
+      - name: shards                   # JSON array from emit_shards.py --workload f2_perm --batch-size 25
+        value: "[]"
+      - name: cmd                      # --n-jobs == cpu (5). expr features; honest n-perm null.
+        value: 'python ctrp-gdsc-ccle-ml/4_model/run_signature.py --shard "$SHARD" --features expr --n-perm 100 --n-jobs 5'
+      - name: result-prefix
+        value: results/f2_signatures
+      - name: image
+        value: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/ccle-pipeline:v1
+
+  templates:
+    - name: fanout
+      parallelism: 24                  # == node slots (8 nodes x 3 pods); node capacity is the real gate
+      inputs:
+        parameters: [{ name: cmd }, { name: result-prefix }, { name: image }]
+      steps:
+        - - name: run-shard
+            template: run
+            withParam: "{{workflow.parameters.shards}}"
+            arguments:
+              parameters:
+                - { name: shard, value: "{{item}}" }
+                - { name: cmd, value: "{{workflow.parameters.cmd}}" }
+                - { name: result-prefix, value: "{{workflow.parameters.result-prefix}}" }
+                - { name: image, value: "{{workflow.parameters.image}}" }
+
+    - name: run
+      inputs:
+        parameters: [{ name: shard }, { name: cmd }, { name: result-prefix }, { name: image }]
+      retryStrategy:
+        limit: "3"
+        retryPolicy: Always            # spot loss + pod failure (incl OOM); safe now MinIO archival is off
+      container:
+        image: "{{inputs.parameters.image}}"
+        command: ["/app/entrypoint.sh"]
+        args: ["sh", "-c", "{{inputs.parameters.cmd}}"]
+        env:
+          - { name: SHARD, value: "{{inputs.parameters.shard}}" }
+          - { name: RESULT_PREFIX, value: "{{inputs.parameters.result-prefix}}" }
+          - { name: STAGE_S3, value: "1" }
+          - { name: OMP_NUM_THREADS, value: "1" }
+          - { name: OPENBLAS_NUM_THREADS, value: "1" }
+          - { name: MKL_NUM_THREADS, value: "1" }
+          - { name: NUMEXPR_NUM_THREADS, value: "1" }
+        resources:                                        # F2: cpu 5 (n-jobs 5), memory 8Gi -> 3 pods/node
+          requests: { cpu: "5", memory: "8Gi" }
+          limits:   { cpu: "5", memory: "8Gi" }

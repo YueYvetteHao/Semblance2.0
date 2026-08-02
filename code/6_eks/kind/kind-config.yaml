@@ -1,0 +1,18 @@
+# Local kind cluster for rehearsing the Argo fan-out with NO AWS.
+# extraMounts expose the Mac's model-ready data read-only into the kind node; fanout-kind.yaml
+# then hostPath-mounts these into each pod (STAGE_S3=0, so no S3 sync).
+#   kind create cluster --name ccle-rehearsal --config 6_eks/kind/kind-config.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: <REPO_ROOT>/ctrp-gdsc-ccle-ml/2_merge/out
+        containerPath: /data/merge
+        readOnly: true
+      - hostPath: <REPO_ROOT>/ctrp-gdsc-ccle-ml/3_omics/out
+        containerPath: /data/omics
+        readOnly: true
+      - hostPath: <REPO_ROOT>/ctrp-gdsc-ccle-ml/5_pathway/out
+        containerPath: /data/pathway
+        readOnly: true
