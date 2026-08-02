@@ -73,8 +73,10 @@ axd.text(pnull,2.92,"perm.\nnull",color=MUTED,fontsize=5.0,ha="center",va="botto
 axd.text(oracle+0.006,2,f"{oracle:+.3f}",va="center",fontsize=6,color=INK2)
 axd.text(drugres+0.006,1,f"{drugres:+.3f}",va="center",fontsize=6,color=INK2)
 axd.text(tfree+0.006,0,f"{tfree:+.3f}  **",va="center",fontsize=6,color=MECH,fontweight="bold")
-axd.annotate("",xy=(tfree,0.56),xytext=(drugres,0.56),arrowprops=dict(arrowstyle="-|>",color=INK2,lw=0.8,shrinkA=0,shrinkB=0))
-axd.text((drugres+tfree)/2,0.30,"43% tissue",ha="center",va="center",fontsize=5.4,color=INK2)
+# NOTE: the arrow between the two mechanism bars and its "43% tissue" label were removed. The two
+# bars are correlations against DIFFERENT (nested) targets, so the gap between them is a drop in
+# held-out skill, not a share of one signal — annotating it as a percentage read as a variance
+# decomposition, which is a claim the data do not support. The caption states the comparison instead.
 axd.set_yticks(yb); axd.set_yticklabels(names,fontsize=5.7,linespacing=0.95)
 axd.set_xlim(0,0.265); axd.set_ylim(-0.55,3.5); axd.set_xlabel("pan-cancer held-out ρ  (≥5 lines/cell)",fontsize=6.6)
 axd.set_title("d",loc="left",fontweight="bold",fontsize=8.2)
