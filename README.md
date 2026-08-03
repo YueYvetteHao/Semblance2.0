@@ -4,7 +4,8 @@ Static web app, analysis code, and manuscript figures for a two-arm drug-sensiti
 recommender built on a harmonized GDSC2 + CTRP v2.2 drug-response store merged with CCLE
 multi-omics, keyed on DepMap ID.
 
-**Live app → https://yueyvettehao.github.io/Semblance2.0/**
+**Live app → https://yueyvettehao.github.io/Semblance2.0/**  
+**Preprint → [manuscript_v4.pdf](manuscript_v4.pdf)**
 
 The app answers a deliberately narrow question in two tiers of confidence:
 
@@ -129,7 +130,15 @@ CTRP and CCLE via the Broad Institute, and DepMap (https://depmap.org).
 
 ## Citation
 
-Manuscript in preparation; preprint and citation details to follow.
+The manuscript is self-hosted in this repository as
+[`manuscript_v4.pdf`](manuscript_v4.pdf). Until it appears in a peer-reviewed venue, cite the
+archived deposit, which covers the data, the code, and this repository:
+
+> Hao, Y. *Separating drug main effects from molecular personalization in cancer drug-sensitivity
+> prediction: a harmonized GDSC∪CTRP and CCLE benchmark with permutation-controlled biomarker
+> discovery.* Zenodo (2026). https://doi.org/10.5281/zenodo.21764627
+
+Note that the manuscript has not been peer reviewed.
 
 ## Author
 
